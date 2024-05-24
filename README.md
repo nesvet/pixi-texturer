@@ -9,5 +9,5 @@ $ npm install pixi-texturer
 Or
 
 ```sh
-$ yarn add pixi-texturer
+$ bun add pixi-texturer
 ```
