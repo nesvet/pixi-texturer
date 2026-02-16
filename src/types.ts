@@ -1,25 +1,18 @@
 import type {
-	DisplayObject,
+	Container,
 	Rectangle,
 	RenderTexture,
+	Sprite,
 	Texture
 } from "pixi.js";
 
 
 export type PixiLike = {
 	Assets?: { load: (id: string) => Promise<Texture> };
-	DisplayObject: new (...args: unknown[]) => DisplayObject;
-	Container: new () => { addChild: (child: DisplayObject) => DisplayObject; destroy: (options?: boolean) => void };
+	Container: new () => Container;
 	Rectangle: new (x: number, y: number, width: number, height: number) => Rectangle;
-	Texture: new (
-		baseTexture: unknown,
-		frame?: Rectangle,
-		orig?: Rectangle,
-		trim?: Rectangle,
-		rotate?: number,
-		anchor?: { x: number; y: number }
-	) => Texture;
-	Sprite: new (texture: Texture) => unknown;
+	Texture: new (options: { source: unknown; frame?: Rectangle; rotate?: number; defaultAnchor?: { x: number; y: number } }) => Texture;
+	Sprite: new (texture: Texture) => Sprite;
 };
 
 export type EntryOptions = {
@@ -47,23 +40,29 @@ export type TexturerOptions = {
 };
 
 export type GenerateTextureLike = {
-	generateTexture: (displayObject: unknown, options?: { region?: Rectangle; [key: string]: unknown }) => RenderTexture;
+	generateTexture: (options: { target: Container; frame?: Rectangle; [key: string]: unknown }) => RenderTexture;
 };
 
 export type Entry = {
 	names: string[];
-	item: DisplayObject;
-	displayObject: DisplayObject;
+	displayObject: Container;
 	rectangle: Rectangle | null;
 	texture: Texture | null;
 	options: EntryOptions & Required<Pick<EntryOptions, "paddingBottom" | "paddingLeft" | "paddingRight" | "paddingTop">>;
 };
 
-export type EntrySource = DisplayObject | HTMLCanvasElement | HTMLImageElement | Texture | string;
+export type EntrySource = Container | HTMLCanvasElement | HTMLImageElement | Texture | string;
 
 export type EntryObject = EntryOptions & { name?: string; names?: string[]; source: EntrySource };
 
-export type SetEntry = EntryObject | [DisplayObject | string[] | string, EntryOptions | EntrySource, EntryOptions?];
+/**
+ * Entry format for Texturer:
+ * - [name, source] or [name, source, options]
+ * - [[name1, name2], source] or [[name1, name2], source, options]
+ * - [source, options] — no name, access by index only
+ * - { name, source } or { names, source } or { source } with optional options
+ */
+export type SetEntry = EntryObject | [Container | string[] | string, EntryOptions | EntrySource, EntryOptions?];
 
 export type SpritesheetFrameData = {
 	frame: { x: number; y: number; w: number; h: number };

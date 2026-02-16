@@ -1,4 +1,4 @@
-import type { DisplayObject as PixiDisplayObject, RenderTexture } from "pixi.js";
+import type { Container as PixiContainer, RenderTexture } from "pixi.js";
 import { Texturer, type SetEntry } from "../src/index.js";
 
 
@@ -9,31 +9,25 @@ export const PADDING_UNIFORM = 4;
 
 type Bounds = { x?: number; y?: number; width?: number; height?: number };
 
-class MockDisplayObject {
+const destroyedContainers: Container[] = [];
+
+class Container {
+	x = 0;
+	y = 0;
+	children: unknown[] = [];
+	
 	getLocalBounds(): Bounds & { width: number; height: number } {
 		return { x: 0, y: 0, width: 10, height: 10 };
 	}
 	
-	x = 0;
-	y = 0;
-}
-
-const destroyedContainers: Container[] = [];
-
-class Container extends MockDisplayObject {
-	children?: MockDisplayObject[] = [];
-	destroyed?: boolean;
-	
-	addChild(child: MockDisplayObject): MockDisplayObject {
-		this.children ??= [];
+	addChild(child: unknown): unknown {
 		this.children.push(child);
 		
 		return child;
 	}
 	
-	destroy(_options?: boolean): void {
+	destroy(_options?: { children?: boolean }): void {
 		destroyedContainers.push(this);
-		this.destroyed = true;
 	}
 }
 
@@ -62,23 +56,16 @@ class Rectangle {
 type TextureFrame = { x?: number; y?: number; width?: number; height?: number };
 
 class Texture {
-	baseTexture: unknown;
+	source: unknown;
 	frame: TextureFrame;
 	rotate?: number;
 	anchor?: { x: number; y: number };
 	
-	constructor(
-		baseTexture: unknown,
-		frame: TextureFrame,
-		_a?: unknown,
-		_b?: unknown,
-		rotate?: number,
-		anchor?: { x: number; y: number }
-	) {
-		this.baseTexture = baseTexture;
-		this.frame = frame;
-		this.rotate = rotate;
-		this.anchor = anchor;
+	constructor(options: { source: unknown; frame?: TextureFrame; rotate?: number; defaultAnchor?: { x: number; y: number } }) {
+		this.source = options.source;
+		this.frame = options.frame ?? { width: 10, height: 10 };
+		this.rotate = options.rotate;
+		this.anchor = options.defaultAnchor;
 	}
 }
 
@@ -90,19 +77,18 @@ class Sprite {
 	}
 }
 
-(Sprite.prototype as { getLocalBounds?: () => Bounds & { width: number; height: number } }).getLocalBounds = function () {
+(Sprite.prototype as unknown as { getLocalBounds?: () => Bounds & { width: number; height: number } }).getLocalBounds = function () {
 	const frame = (this as { texture?: { frame?: { width?: number; height?: number } } }).texture?.frame;
 	
 	return { x: 0, y: 0, width: frame?.width ?? 10, height: frame?.height ?? 10 };
 };
 
-const baseTexture = {};
+const textureSource = {};
 
 export const mockPixi = {
 	Assets: {
-		load: (_id: string) => Promise.resolve(new Texture(baseTexture, { width: 10, height: 10 }))
+		load: (_id: string) => Promise.resolve(new Texture({ source: textureSource, frame: { width: 10, height: 10 } }))
 	},
-	DisplayObject: MockDisplayObject,
 	Container,
 	Rectangle,
 	Texture,
@@ -110,7 +96,6 @@ export const mockPixi = {
 } as unknown as Parameters<typeof Texturer.use>[0];
 
 export const mockPixiWithoutAssets = {
-	DisplayObject: MockDisplayObject,
 	Container,
 	Rectangle,
 	Texture,
@@ -120,29 +105,34 @@ export const mockPixiWithoutAssets = {
 export function createMockTexture(
 	frame: { width?: number; height?: number } = { width: 10, height: 10 }
 ): Texture {
-	return new Texture(baseTexture, { width: frame.width ?? 10, height: frame.height ?? 10 });
+	return new Texture({ source: textureSource, frame: { width: frame.width ?? 10, height: frame.height ?? 10 } });
 }
 
 type MockRenderer = {
-	generateTexture: (container: unknown, opts?: Record<string, unknown>) => RenderTexture;
+	generateTexture: (options: { target: unknown; frame?: unknown; [key: string]: unknown }) => RenderTexture;
 	lastOpts?: Record<string, unknown>;
 };
 
 export function createMockRenderer(): MockRenderer {
-	return {
-		generateTexture: (container: unknown, opts?: Record<string, unknown>) =>
-			({ baseTexture, ...opts } as unknown as RenderTexture)
+	const renderer: MockRenderer = {
+		generateTexture: (options: Record<string, unknown>) => {
+			renderer.lastOpts = options;
+			const { target: _target, frame, ...rest } = options;
+			
+			return { source: textureSource, frame, ...rest } as unknown as RenderTexture;
+		}
 	};
+	
+	return renderer;
 }
 
 export function createDisplayObject(
 	bounds: Bounds & { width?: number; height?: number } = { x: 0, y: 0, width: 10, height: 10 }
-): PixiDisplayObject {
-	const obj = new MockDisplayObject();
-	
+): PixiContainer {
+	const obj = new Container();
 	obj.getLocalBounds = () => ({ x: 0, y: 0, width: 10, height: 10, ...bounds });
 	
-	return obj as unknown as PixiDisplayObject;
+	return obj as unknown as PixiContainer;
 }
 
 type TexturerOptions = { baseWidth?: number; trim?: boolean; preserveContents?: boolean; generateTexture?: Record<string, unknown> };

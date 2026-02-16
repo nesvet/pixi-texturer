@@ -63,8 +63,8 @@ describe("with use()", () => {
 	test("constructor with empty entries creates valid texture", () => {
 		const texturer = createTexturer([]);
 		expect(() => texturer.get(0)).toThrow();
-		expect(texturer.texture.baseTexture).toBeDefined();
-		expect((texturer.texture as { region?: unknown }).region).toBeDefined();
+		expect(texturer.texture.source).toBeDefined();
+		expect(texturer.texture.frame).toBeDefined();
 	});
 	
 	describe("set()", () => {
@@ -124,7 +124,7 @@ describe("with use()", () => {
 		
 		test("throws for non-DisplayObject", () => {
 			expect(() => createTexturer([ [ "x", {} ] ])).toThrow(
-				"Only PIXI.DisplayObjects are supported"
+				"Only PIXI.Containers are supported"
 			);
 		});
 		
@@ -519,10 +519,10 @@ describe("with use()", () => {
 	
 	test("generateTexture receives merged options", () => {
 		const renderer = createMockRenderer();
-		const generateTexture = (container: unknown, opts?: Record<string, unknown>): RenderTexture => {
+		const generateTexture = (opts: Record<string, unknown>): RenderTexture => {
 			renderer.lastOpts = opts;
 			
-			return { baseTexture: {} } as unknown as RenderTexture;
+			return { source: {} } as unknown as RenderTexture;
 		};
 		const obj = createDisplayObject();
 		const texturer = new Texturer([ [ "a", obj ] ], { generateTexture }, {
@@ -531,7 +531,7 @@ describe("with use()", () => {
 		});
 		expect(texturer.texture).toBeDefined();
 		expect(renderer.lastOpts!.resolution).toBe(3);
-		expect(renderer.lastOpts!.region).toBeDefined();
+		expect(renderer.lastOpts!.frame).toBeDefined();
 	});
 });
 

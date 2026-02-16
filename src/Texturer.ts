@@ -1,4 +1,9 @@
-import type { DisplayObject, RenderTexture, Texture } from "pixi.js";
+import type {
+	Container,
+	RenderTexture,
+	Sprite,
+	Texture
+} from "pixi.js";
 import type {
 	Entry,
 	EntryOptions,
@@ -15,29 +20,29 @@ import type {
 let PIXI: PixiLike | undefined;
 
 
-function resolveToDisplayObject(source: EntrySource): DisplayObject {
-	if (source instanceof PIXI!.DisplayObject)
+function resolveToDisplayObject(source: EntrySource): Container {
+	if (source instanceof PIXI!.Container)
 		return source;
 	
-	if (source && typeof source === "object" && "baseTexture" in source)
-		return new PIXI!.Sprite(source as Texture) as DisplayObject;
+	if (source && typeof source === "object" && "source" in source)
+		return new PIXI!.Sprite(source as Texture) as Container;
 	
 	if (typeof HTMLImageElement !== "undefined" && source instanceof HTMLImageElement) {
 		const texture = (PIXI!.Texture as unknown as { from: (s: unknown) => Texture }).from(source);
 		
-		return new PIXI!.Sprite(texture) as DisplayObject;
+		return new PIXI!.Sprite(texture) as Container;
 	}
 	
 	if (typeof HTMLCanvasElement !== "undefined" && source instanceof HTMLCanvasElement) {
 		const texture = (PIXI!.Texture as unknown as { from: (s: unknown) => Texture }).from(source);
 		
-		return new PIXI!.Sprite(texture) as DisplayObject;
+		return new PIXI!.Sprite(texture) as Container;
 	}
 	
 	if (typeof source === "string")
 		throw new Error("String sources require setAsync(); use await texturer.setAsync(entries)");
 	
-	throw new Error("Only PIXI.DisplayObjects are supported");
+	throw new Error("Only PIXI.Containers are supported");
 }
 
 
@@ -69,9 +74,9 @@ export class Texturer {
 	generateTextureOptions: Record<string, unknown>;
 	preserveContents: boolean;
 	names = new Map<string, Entry>();
-	items = new Map<DisplayObject, Entry>();
+	items = new Map<Container, Entry>();
 	list!: Entry[];
-	container!: { addChild: (child: DisplayObject) => DisplayObject; destroy: (options?: boolean) => void };
+	container!: Container;
 	texture!: RenderTexture;
 	
 	set(entries: SetEntry[]): void {
@@ -79,7 +84,7 @@ export class Texturer {
 		this.names.clear();
 		this.items.clear();
 		
-		const normalized = entries.map((entry): [DisplayObject | string[] | string, EntryOptions | EntrySource, EntryOptions?] => {
+		const normalized = entries.map((entry): [Container | string[] | string, EntryOptions | EntrySource, EntryOptions?] => {
 			
 			if (Array.isArray(entry))
 				return entry;
@@ -99,21 +104,21 @@ export class Texturer {
 			
 			let resolvedNames: string[];
 			let resolvedSource: EntrySource;
-			let resolvedOptions: EntryOptions = options;
+			let resolvedOptions: EntryOptions;
 			
 			if (typeof names === "object" && !Array.isArray(names)) {
-				resolvedOptions = (item ?? {}) as EntryOptions;
+				resolvedOptions = (typeof item === "object" && item !== null && !Array.isArray(item) ? { ...item } : {}) as EntryOptions;
 				resolvedSource = names as unknown as EntrySource;
 				resolvedNames = [];
 			} else if (typeof names === "string") {
 				resolvedNames = [ names ];
 				resolvedSource = item as EntrySource;
+				resolvedOptions = { ...options };
 			} else {
 				resolvedNames = names;
 				resolvedSource = item as EntrySource;
+				resolvedOptions = { ...options };
 			}
-			
-			const displayObject = resolveToDisplayObject(resolvedSource);
 			
 			if (resolvedOptions.padding)
 				if (typeof resolvedOptions.padding === "number") {
@@ -133,9 +138,10 @@ export class Texturer {
 						resolvedOptions.paddingLeft = paddingLeft;
 				}
 			
+			const displayObject = resolveToDisplayObject(resolvedSource);
+			
 			const entry: Entry = {
 				names: resolvedNames,
-				item: displayObject,
 				displayObject,
 				rectangle: null,
 				texture: null,
@@ -156,11 +162,12 @@ export class Texturer {
 					this.names.set(name, entry);
 			}
 			
-			if (resolvedSource instanceof PIXI!.DisplayObject) {
-				if (this.items.has(resolvedSource))
+			const sourceAsContainer = resolvedSource as Container;
+			if (sourceAsContainer instanceof PIXI!.Container) {
+				if (this.items.has(sourceAsContainer))
 					throw new Error(`Duplicate DisplayObject at index ${i}`);
 				
-				this.items.set(resolvedSource, entry);
+				this.items.set(sourceAsContainer, entry);
 			}
 			
 			return entry;
@@ -290,14 +297,15 @@ export class Texturer {
 		const totalHeight = y + rowHeight + 1;
 		
 		/*
-		 * @HACK Increasing totalWidth and totalHeight by 1 for strange rounding bug
-		 * When resolution is, for example, 1.25, texture.height might be slightly lower than required height
-		 * So increasing totalHeight by 1 resulting texture.height is guaranteed (hope so) fit required height
+		 * @HACK +1 to totalWidth/totalHeight: guard against texture dimensions being slightly smaller than required.
+		 * PixiJS may truncate fractional sizes (GenerateTextureSystem | 0) or suffer float precision loss
+		 * with non-integer resolution (e.g. 1.33). Extra pixel ensures last row/column is not cropped.
 		 */
 		
-		this.texture = this.renderer.generateTexture(this.container, {
+		this.texture = this.renderer.generateTexture({
 			...this.generateTextureOptions,
-			region: new PIXI!.Rectangle(0, 0, totalWidth, totalHeight)
+			target: this.container,
+			frame: new PIXI!.Rectangle(0, 0, totalWidth, totalHeight)
 		});
 		
 		for (const entry of this.list) {
@@ -312,18 +320,16 @@ export class Texturer {
 			}
 			
 			const rotate = entry.options.rotate === true ? 1 : typeof entry.options.rotate === "number" ? entry.options.rotate : undefined;
-			entry.texture = new PIXI!.Texture(
-				this.texture.baseTexture,
-				rect,
-				undefined,
-				undefined,
+			entry.texture = new PIXI!.Texture({
+				source: this.texture.source,
+				frame: rect,
 				rotate,
-				entry.options.anchor
-			);
+				defaultAnchor: entry.options.anchor
+			});
 		}
 		
 		if (!this.preserveContents)
-			this.container.destroy(true);
+			this.container.destroy({ children: true });
 		
 	}
 	
@@ -357,8 +363,8 @@ export class Texturer {
 		};
 	}
 	
-	get(key: DisplayObject | number | string): Texture {
-		const entry = this.names.get(key as string) ?? this.list[key as number] ?? this.items.get(key as DisplayObject);
+	get(key: Container | number | string): Texture {
+		const entry = this.names.get(key as string) ?? this.list[key as number] ?? this.items.get(key as Container);
 		
 		if (!entry)
 			throw new Error(`No such entry "${typeof key === "object" ? "[DisplayObject]" : String(key)}"`);
@@ -366,7 +372,7 @@ export class Texturer {
 		return entry.texture!;
 	}
 	
-	newSprite(key: DisplayObject | number | string): unknown {
+	newSprite(key: Container | number | string): Sprite {
 		return new PIXI!.Sprite(this.get(key));
 	}
 	
